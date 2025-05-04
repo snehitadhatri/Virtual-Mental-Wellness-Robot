@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Virtual Wellness Robot</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <style>
+    body {
+      font-family: "Inter", sans-serif;
+      background-color: #f0f9ff;
+    }
+    .chat-box {
+      height: 300px;
+      overflow-y: auto;
+      background: white;
+      border-radius: 0.5rem;
+      padding: 1rem;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    .message {
+      margin-bottom: 1rem;
+    }
+    .message.user {
+      text-align: right;
+    }
+    .message.bot {
+      text-align: left;
+    }
+    .message .text {
+      display: inline-block;
+      padding: 0.5rem 1rem;
+      border-radius: 1rem;
+      max-width: 70%;
+    }
+    .message.user .text {
+      background-color: #3b82f6;
+      color: white;
+    }
+    .message.bot .text {
+      background-color: #e0e7ff;
+      color: #1e293b;
+    }
+    .typing-indicator {
+      font-style: italic;
+      color: gray;
+      margin-top: 0.5rem;
+      height: 1.5rem;
+    }
+    .quick-replies {
+      margin-top: 0.5rem;
+    }
+    .quick-replies button {
+      margin-right: 0.5rem;
+      background-color: #3b82f6;
+      color: white;
+      border: none;
+      padding: 0.3rem 0.8rem;
+      border-radius: 0.5rem;
+      cursor: pointer;
+    }
+    .quick-replies button:hover {
+      background-color: #2563eb;
+    }
+    .feedback-buttons {
+      margin-top: 0.5rem;
+    }
+    .feedback-buttons button {
+      margin-right: 0.5rem;
+      background-color: #10b981;
+      color: white;
+      border: none;
+      padding: 0.3rem 0.8rem;
+      border-radius: 0.5rem;
+      cursor: pointer;
+    }
+    .feedback-buttons button.not-helpful {
+      background-color: #ef4444;
+    }
+    .feedback-buttons button:hover {
+      opacity: 0.8;
+    }
+  </style>
+</head>
+<body>
+  <div id="app" class="max-w-md mx-auto p-4">
+    <h1 class="text-2xl font-bold mb-4 text-center">Virtual Wellness Robot</h1>
+
+    <section class="mb-6">
+      <h2 class="text-lg font-semibold mb-2">Mood Detection</h2>
+      <textarea v-model="moodText" rows="3" placeholder="Type how you feel..." class="w-full p-2 rounded border"></textarea>
+      <button @click="detectMood" class="mt-2 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Detect Mood</button>
+      <p v-if="detectedMood" class="mt-2 font-semibold">Detected Mood: {{ detectedMood }}</p>
+    </section>
+
+    <section class="mb-6">
+      <h2 class="text-lg font-semibold mb-2">Conversational Support</h2>
+      <div class="chat-box" ref="chatBox">
+        <div v-for="(msg, index) in chatMessages" :key="index" :class="['message', msg.sender]">
+          <div class="text">{{ msg.text }}</div>
+        </div>
+      </div>
+      <div class="typing-indicator">{{ typingIndicator }}</div>
+      <div v-if="typingIndicator" class="loading-spinner" style="margin: 10px 0;">
+        <svg class="animate-spin h-5 w-5 text-blue-600 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+        </svg>
+      </div>
+      <div class="quick-replies">
+        <button v-for="(option, idx) in quickReplies" :key="idx" @click="quickReplySelected(option.type)">
+          {{ option.label }}
+        </button>
+      </div>
+      <textarea v-model="chatInput" rows="2" placeholder="Type your message..." class="w-full p-2 rounded border mt-2"></textarea>
+      <button @click="sendMessage" class="mt-2 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Send</button>
+      <div class="feedback-buttons" v-if="showFeedback">
+        <button @click="sendFeedback('helpful')">👍 Helpful</button>
+        <button class="not-helpful" @click="sendFeedback('not helpful')">👎 Not Helpful</button>
+      </div>
+    </section>
+
+    <section class="mb-6">
+      <h2 class="text-lg font-semibold mb-2">Generate Wellness Content</h2>
+      <select v-model="contentType" class="w-full p-2 rounded border mb-2">
+        <option value="meditation">Guided Meditation</option>
+        <option value="story">Motivational Story</option>
+        <option value="quote">Inspirational Quote</option>
+        <option value="coping_strategy">Coping Strategy</option>
+      </select>
+      <textarea v-model="contentContext" rows="2" placeholder="Optional context or mood..." class="w-full p-2 rounded border mb-2"></textarea>
+      <button @click="generateContent" class="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700">Generate</button>
+      <p v-if="generatedContent" class="mt-4 p-4 bg-white rounded shadow">{{ generatedContent }}</p>
+    </section>
+  </div>
+
+  <script>
+    const { createApp, ref, onMounted } = Vue;
+
+    createApp({
+      setup() {
+        const moodText = ref("");
+        const detectedMood = ref("");
+        const chatInput = ref("");
+        const chatMessages = ref([]);
+        const contentType = ref("meditation");
+        const contentContext = ref("");
+        const generatedContent = ref("");
+        const chatBox = ref(null);
+        const typingIndicator = ref("");
+        const quickReplies = ref([]);
+        const showFeedback = ref(false);
+        const lastUserInput = ref("");
+        const lastBotResponse = ref("");
+
+        async function detectMood() {
+          if (!moodText.value.trim()) {
+            alert("Please enter some text for mood detection.");
+            return;
+          }
+          try {
+            const response = await fetch("/detect_emotion", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ text: moodText.value }),
+            });
+            const data = await response.json();
+            if (data.emotion) {
+              detectedMood.value = data.emotion;
+            } else {
+              alert("Failed to detect mood.");
+            }
+          } catch (error) {
+            alert("Error detecting mood: " + error.message);
+          }
+        }
+
+        async function sendMessage() {
+          if (!chatInput.value.trim()) {
+            return;
+          }
+          chatMessages.value.push({ sender: "user", text: chatInput.value });
+          lastUserInput.value = chatInput.value;
+          chatInput.value = "";
+          showFeedback.value = false;
+
+          typingIndicator.value = "EmotiCare is typing...";
+          try {
+            const response = await fetch("/converse", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ text: lastUserInput.value, history: chatMessages.value }),
+            });
+            const data = await response.json();
+            if (data.response) {
+              chatMessages.value.push({ sender: "bot", text: data.response });
+              lastBotResponse.value = data.response;
+              showFeedback.value = true;
+            } else {
+              chatMessages.value.push({ sender: "bot", text: "Sorry, I couldn't respond." });
+              showFeedback.value = false;
+            }
+          } catch (error) {
+            chatMessages.value.push({ sender: "bot", text: "Error: " + error.message });
+            showFeedback.value = false;
+          }
+          typingIndicator.value = "";
+          scrollChatToBottom();
+        }
+
+        async function quickReplySelected(type) {
+          chatMessages.value.push({ sender: "user", text: type.charAt(0).toUpperCase() + type.slice(1) });
+          lastUserInput.value = type.charAt(0).toUpperCase() + type.slice(1);
+          showFeedback.value = false;
+
+          typingIndicator.value = "EmotiCare is typing...";
+          try {
+            const response = await fetch("/generate_wellness_content", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ type }),
+            });
+            const data = await response.json();
+            if (data.content) {
+              chatMessages.value.push({ sender: "bot", text: data.content });
+              lastBotResponse.value = data.content;
+              showFeedback.value = true;
+            } else {
+              chatMessages.value.push({ sender: "bot", text: "Failed to generate content." });
+              showFeedback.value = false;
+            }
+          } catch (error) {
+            chatMessages.value.push({ sender: "bot", text: "Error: " + error.message });
+            showFeedback.value = false;
+          }
+          typingIndicator.value = "";
+          scrollChatToBottom();
+        }
+
+        async function sendFeedback(feedback) {
+          if (!lastUserInput.value || !lastBotResponse.value) {
+            return;
+          }
+          try {
+            const response = await fetch("/feedback", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                feedback,
+                user_input: lastUserInput.value,
+                bot_response: lastBotResponse.value,
+              }),
+            });
+            if (response.ok) {
+              chatMessages.value.push({ sender: "system", text: `Feedback '${feedback}' sent successfully.` });
+            } else {
+              chatMessages.value.push({ sender: "system", text: `Failed to send feedback.` });
+            }
+          } catch (error) {
+            chatMessages.value.push({ sender: "system", text: `Error sending feedback: ${error.message}` });
+          }
+          scrollChatToBottom();
+        }
+
+        async function generateContent() {
+          try {
+            const response = await fetch("/generate_wellness_content", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ type: contentType.value, context: contentContext.value }),
+            });
+            const data = await response.json();
+            if (data.content) {
+              generatedContent.value = data.content;
+            } else {
+              generatedContent.value = "Failed to generate content.";
+            }
+          } catch (error) {
+            generatedContent.value = "Error: " + error.message;
+          }
+        }
+
+        function scrollChatToBottom() {
+          if (chatBox.value) {
+            chatBox.value.scrollTop = chatBox.value.scrollHeight;
+          }
+        }
+
+        async function loadQuickReplies() {
+          try {
+            const response = await fetch("/quick_replies");
+            const data = await response.json();
+            quickReplies.value = data.quick_replies || [];
+          } catch (error) {
+            console.error("Failed to load quick replies:", error);
+          }
+        }
+
+        onMounted(() => {
+          loadQuickReplies();
+        });
+
+        return {
+          moodText,
+          detectedMood,
+          chatInput,
+          chatMessages,
+          contentType,
+          contentContext,
+          generatedContent,
+          chatBox,
+          typingIndicator,
+          quickReplies,
+          showFeedback,
+          detectMood,
+          sendMessage,
+          quickReplySelected,
+          sendFeedback,
+          generateContent,
+        };
+      },
+    }).mount("#app");
+  </script>
+</body>
+</html>
